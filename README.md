@@ -40,4 +40,5 @@ My role involved:
 4.	Fitting and interpreting GLMMs to the data;
 5.	Performing model selection and assessing goodness-of-fit;
 6.	Producing a report on the analysis using R Markdown.
+
 I acquired expertise in the theory and implementation of generalized linear mixed models, as well as applied knowledge in ecology and wildlife management.
