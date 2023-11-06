@@ -12,15 +12,25 @@ By working with multispecies data, it is important to carry out exploratory anal
 References:
 
 Bates, D., Maechler, M., Bolker, B., Walker, S. (2015). Fitting Linear Mixed-Effects Models Using lme4. Journal of Statistical Software, 67(1), 1-48. doi:10.18637/jss.v067.i01.
+
 Caughley, G. (1994) Directions in conservation biology. Journal of Animal Ecology, 63, 215-244.
+
 Fisher, D.O. (2011) Cost, effort and outcome of mammal rediscovery: Neglect of small species. Biological Conservation, 144(5), 1712-1718.
+
 Monitoring Site 1000 Project, Biodiversity Center, Ministry of Environment of Japan (2014) “Monitoring site 1000 Village survey - Medium and large mammal survey data (2006-2012)” (SAT03zip, downloaded from http://www.biodic.go.jp/moni1000/findings/data/index.html). Accessed 2023.
+
 Moral, R.A., Azevedo, F.C.C., Verdade, L.M. (2016) The use of sheepdogs in sheep production in Southeastern Brazil. Pastoralism Research, Policy and Practice, 6(1), 1-7. 
+
 Nichols, J., Williams, B.K. (2006) Monitoring for conservation. Trends in Ecology and Evolution, 21(12), 668-673.
+
 R Core Team (2022). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+
 Verbeke, G. and Molenberghs, G. (2000). Linear Mixed Models for Longitudinal. Data. Springer Series in Statistics. New-York: Springer.
+
 Verdade, L.M., Lyra-Jorge, M.C., Piña, C.I. [Eds.] (2014a) Applied Ecology and Human Dimensions in Biological Conservation. Springer-Verlag, Heidelberg, 228p.
+
 Verdade, L.M., Lyra-Jorge, M.C., Piña, C.I. (2014b) Redirections in conservation biology. p.3-17. In: Verdade, L.M., Lyra-Jorge, M.C., Piña, C.I. [Eds.]. Applied Ecology and Human Dimensions in Biological Conservation. Springer-Verlag, Heidelberg.
+
 Yoccoz, N.G., Nichols, J.D., Boulinier, T. (2001) Monitoring of biological diversity in space and time. Trends in Ecology and Evolution, 16(8), 446-453.
 
 My role involved:
