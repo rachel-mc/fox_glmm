@@ -1,0 +1,431 @@
+---
+title: "Generalised Linear Mixed Models applied to Wildlife Monitoring : A Dynamic Report "
+author: Rachel McInerney, Niamh Mimnagh & Rafael de Andrade Moral
+date: "2023-07-21"
+output: html_document 
+---
+
+## Introduction to the data
+
+```{r}
+# Read in the dataset
+library(tidyverse)
+village <- read.csv("village.csv")
+```
+
+The dataset used in this report is number 373 from the BioTIME website. It is referred to as 'village' data in which medium and large mammals were surveyed over a time frame of 8 years. This data is compiled of nearby animals detected by infrared sensor cameras. 'village' contains 22347 observations, 25 different species, 37 unique plots and when and where each species was observed - latitude, longitude, day, month and year details are provided. The exact spatial coordinates are not given due to wildlife conservation reasoning.
+
+```{r}
+# Code to obtain the summary statistics above
+nrow(village)
+unique(village$GENUS_SPECIES)
+n_distinct(village$PLOT)
+```
+
+Abundance modelling is a persisting issue in ecology as surveys can lack sufficient information and yield contaminated results (Royle and Dorazio, 2006). How can we know which animals are endangered and when immediate action on our behalf is required with this inaccurate information? It is pivotal that these counts are precisely recorded in the interest of protecting species and preventing their extinction. 
+
+It is important to mostly use generalised linear mixed models in our analysis as we have dependent count data that is not normally distributed (Bolker, 2009). Count data models are heteroscedastic by nature but the random effects deal with the dependence over time. We chose to model the red fox counts since they are the 9th most abundant species and occur throughout the island of Japan. We also explored how these mammals influence the abundance of other species.
+
+```{r}
+total_abun <- village |>
+  group_by(GENUS_SPECIES) |>
+  summarise(ABUNDANCE=sum(ABUNDANCE)) |>
+  arrange(desc(ABUNDANCE))
+```
+
+## Exploratory analysis of the data
+
+```{r}
+# Load the other relevant libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+Initially, we consider a bubble plot. I plotted a map of Japan and overlayed circles that show how many foxes were noted in relevent sites in one selected year of the study.
+
+```{r}
+library(maps)
+
+Japan_map <- map_data("world") |>
+  filter(region == "Japan")
+
+fox2011 <- village |> 
+  filter(GENUS_SPECIES == "Vulpes vulpes") |> 
+  filter(YEAR == "2011")
+
+fox2011 |> 
+  ggplot() +
+  geom_polygon(data = Japan_map, aes(x = long, y = lat, group = group), 
+               fill = "grey80", 
+               alpha = 0.9) +
+  geom_point(aes(x = LONGITUDE, y = LATITUDE, color = ABUNDANCE), 
+             alpha = 0.5) +
+  scale_size(range = c(2, 10)) +
+  scale_color_gradient2(low = "red3", mid = "yellow", high = "blue3", 
+                        midpoint = mean(fox2011$ABUNDANCE)) +
+  theme_void() +
+  coord_map()
+```
+
+*Figure 1 : Bubble plot showing the abundance locations of red foxes in Japan in 2011 obtained from infrared sensor cameras* 
+
+The size of each bubble depicts the abundance of foxes in Japan in 2011. There are many unit recordings; only one fox is observed in some locations, sometimes two. This visualisation tells me that most of the foxes were seen in the southern islands of Japan. One abundance of 24 was recorded in the north.
+
+A time series plot allows us to see what happens to the abundance trend over time. For this, date, month and year were merged to get the correct time points.
+
+```{r}
+village_date <- village |>
+  mutate('DATE' = make_date(year = YEAR, month = MONTH, day = DAY))
+```
+
+The plot is faceted by location to detect trends in each site. We consider semesterly data as an alternative temporal resolution to yearly data. This means we have more data points while avoiding the noise that accompanies monthly data.
+
+```{r}
+village_date$semester <- floor_date(village_date$DATE, "6 months")
+
+fox_sem_abundance <- village_date |>
+  filter(GENUS_SPECIES == "Vulpes vulpes") |>
+  group_by(semester, PLOT) |>
+  summarise(ABUNDANCE = sum(ABUNDANCE, na.rm=T))
+
+ggplot(data = fox_sem_abundance, aes(x = semester, y = ABUNDANCE)) + 
+  geom_point() +
+  geom_line() +
+  labs(x = "Time", 
+       y = "Abundance") +
+  facet_wrap(~PLOT, scales = "free_y") 
+```
+
+*Figure 2 : Semesterly abundance of red foxes in Japan over the eight year period from 2005 to 2012* 
+
+Figure 2 presents how the number of foxes alters from 2005 to 2012 in each place. We can see that they mainly inhabit C006 and C014, with totals surpassing 60 and 40 respectively. These numbers allude to attractive urban or rural landscapes and suggest the presence of readily-available food supplies for the animals in these locations. 
+
+Foxes are depleting in S117, S132 and S097 in the latest years of the survey. There are sharp peaks at C002, C004 and S155 that reduce afterwards. This decline may be due to mortality rates from the species being hunted or an environmental disturbance. Threat indicators can foreshadow that action from humans is needed. Foxes appear to remain stationery in locations such as S105 but this is due to a lack of data points. 
+
+## Basic Modelling 
+
+As the Japanese squirrel is a prey of the red fox, it was decided to consider the abundance of both species and discover how they affect each other. 
+
+```{r}
+abundance2 <- village |>
+  filter(GENUS_SPECIES %in% c("Vulpes vulpes", "Sciurus lis")) |>
+  group_by(GENUS_SPECIES, YEAR, PLOT) |>
+  summarise(ABUNDANCE = sum(ABUNDANCE, na.rm=T))
+
+# Putting the data into wide format in order to fit models
+abun2_wide <- abundance2 |>
+  pivot_wider(names_from = GENUS_SPECIES,
+              values_from = ABUNDANCE)
+```
+
+Different generalised linear models were fitted and compared. We check for overdispersion using half normal plots. 
+
+```{r}
+pois <- glm(`Vulpes vulpes` ~ YEAR + `Sciurus lis`, 
+            data = na.omit(abun2_wide),
+            family = poisson)
+
+summary(pois)
+```
+
+When we fit the standard Poisson log-linear model, we assume a distribution and a structure for the mean : the mean and variance are the same so extra variability is not taken into account. If we exponentiate the estimates (due to the log link), we conclude that for each additional year, we expect an increase in the mean number of foxes by 12%. For every squirrel, we expect an increase in the mean number of foxes by 0.7681%.
+
+```{r}
+exp(1.166e-01)
+exp(7.652e-03)
+```
+
+```{r}
+anova(pois, test="Chisq")
+```
+
+ANODEV (Analysis of Deviance) is an extension of Analysis of Variance and tests the linear effects of time and abundance of squirrels on the abundance of foxes. The standard errors are smaller than they should be so the extra uncertainty is not taken into account by the poisson glm. 
+
+```{r}
+library(hnp)
+
+hnp(pois, 
+    pch = 4, 
+    main = "Poisson: log-linear", 
+    xlab = "Half-normal scores", 
+    ylab = "Deviance residuals")
+```
+
+*Figure 3 : Half-normal plot of deviance residuals from the Poisson model fitted to the fox and squirrel abundance subset of the Japanese village data*
+
+Half-normal plots are a vital tool in testing model goodness-of-fit (Moral et al., 2017). In Figure 3, the deviance residuals lie outside the 95% band so the mean-variance relationship and ultimately the model assumed is not good. 
+
+The Poisson model is used for count data with single, independent and regular events (Demétrio et al., 2014). However, this assumption does not hold for the village data, as abundance was recorded repeatedly at an identical site. Therefore, this model can compute incorrect parameter estimates and inferential results. On the contrary, generalised linear mixed models deal with such autocorrelation (Bono et al., 2021).
+
+```{r}
+qpois <- glm(`Vulpes vulpes` ~ YEAR + `Sciurus lis`, 
+             data = na.omit(abun2_wide),
+             family = quasipoisson)
+
+summary(qpois)
+```
+
+The quasi-Poisson log-linear model gives the same estimates as the Poisson model as we have the same mean but the standard errors are inflated by the square root of the dispersion parameter 5.430342 (= 2.330309). The t-tests are no longer significant.
+
+The Poisson model has a fixed assumption for the variance : it is equal to the mean and changes accordingly with the mean. For the quasi-Poisson model, the variance can increase to exceed the mean. The quasi-likelihood method to estimate overdispersion portrays the variance as a linear function of the Poisson mean, hence the variance is proportional to the mean. 
+
+This time, anova uses an F test as we have an estimated $\phi$ dispersion parameter.
+
+```{r}
+anova(qpois, test = "F")
+```
+
+```{r}
+hnp(qpois, 
+    pch = 4, 
+    main = "quasi-Poisson: log-linear", 
+    xlab = "Half-normal scores", 
+    ylab = "Deviance residuals")
+```
+
+*Figure 4 : Half-normal plot showing the deviance residuals from the quasi-Poisson model of fox and squirrel abundance from the Japanese village data*
+
+The data is overdispersed so the quasi-Poisson model is good. The deviance residuals are all contained within the simulated envelope shown.
+
+```{r}
+library(MASS)
+
+negbin <- glm.nb(`Vulpes vulpes` ~ YEAR + `Sciurus lis`, 
+                 data = na.omit(abun2_wide))
+
+summary(negbin)
+```
+
+The Negative Binomial model considers overdispersion where the variance is a quadratic function of the mean. Here, residual deviance has no meaning anymore, so we cannot infer that the model is good based on this value being similar to the number of degrees of freedom (29), as we glossed over in prior models. We observe scaled deviances : the deviance divided by the dispersion parameter $\theta$.
+
+This model uses a different parameterisation than the Poisson and quasi-Poisson models, hence the estimates are distinct. Alas, neither covariates are significant in predicting red fox populations.
+
+```{r}
+anova(negbin, test = "F")
+```
+
+```{r}
+hnp(negbin, 
+    pch = 4, 
+    main = "Negative Binomial", 
+    xlab = "Half-normal scores", 
+    ylab = "Deviance residuals")
+```
+
+*Figure 5: Half-normal plot showing the deviance residuals from the Negative Binomial model of fox and squirrel abundance from the Japanese village data*
+
+The Negative Binomial model has a quadratic relationship between mean and variance but a linear relationship between them, characteristic of the quasi-Poisson model, suffices here. The quasi-Poisson model fits slightly better as all of the points are within the band, as evidenced by Figure 4 .
+
+## Mixed-effects modelling 
+
+We start with the most basic generalised linear mixed effects model. We fit this to data that only considers the abundance of foxes per year and location. 
+
+```{r}
+library(lme4)
+
+fox_abundance <- village |>
+  filter(GENUS_SPECIES == "Vulpes vulpes") |>
+  group_by(YEAR, PLOT) |>
+  summarise(ABUNDANCE = sum(ABUNDANCE, na.rm=T))
+
+fit1 <- glmer(ABUNDANCE ~ YEAR + (YEAR | PLOT), 
+             family = poisson, 
+             data = fox_abundance)
+
+summary(fit1)  
+
+ranef(fit1)
+```
+
+The random effect in this model with one vertical bar has a bivariate distribution. The summary function conveys estimates for five parameters : an intercept, one slope, two standard deviations and a negative correlation value of -1. The intercept is a peculiar value as the model "failed to converge". 
+
+The ranef function gives the values of the intercept $\beta$~0~(i) and slope $\beta$~1~(i) of the mixed effects model regression line fitted to each location. We can compare these values to the slope that the model holds. If the slope value is larger than 0.24581 and positive, it is steeper but a larger and negative figure is a less steep slope. If the PLOT slope is negative and of the same magnitude, there is no slope as it will be parallel to the x-axis. 
+
+```{r}
+fit2 <- glmer(ABUNDANCE ~ YEAR + (YEAR || PLOT), 
+              family = poisson, 
+              data = fox_abundance)
+
+summary(fit2) 
+```
+
+'fit2' has two vertical bars for its random effect so it assumes that the correlation between the random intercept and random slope is zero. This reduces the number of parameters from five to four.
+
+```{r}
+anova(fit1, fit2, test = "Chisq")
+```
+
+fit1 has one extra parameter than fit2 - we see if this is important by performing a Likelihood Ratio Test. The resulting p-value is tiny. The probability to observe such an extreme statistic (that there is no correlation between the random effects) is zero, so it is highly likely that we have a correlation.  We reject the null hypothesis that the simpler model is better and conclude that fit1 is adequate. The correlation is significant at 0.05, therefore it is needed in the model.
+
+We trust that these are well fitting models but having perfect correlation signifies numerical convergence problems that we must solve.
+
+We then expand to a model that includes the abundance of squirrels as a predictor.
+
+```{r}
+model1 <- glmer(`Vulpes vulpes` ~ YEAR + `Sciurus lis` +  (YEAR || PLOT), 
+                family = poisson, 
+                data = na.omit(abun2_wide))
+
+summary(model1)
+```
+
+The linear effect of squirrel is not significant here in predicting the abundance of foxes while year is.
+
+```{r}
+drop1(model1, test = "Chisq")
+```
+
+As anticipated from its name, the drop1 function drops one effect and compares this model with the full model. It then drops a different covariate and compares this model with the full model. It does not accumulate drops, instead it independently, not sequentially, tests the model with squirrel against the model with year and squirrel and then the model with year versus year and squirrel. Year is a random effect so we must keep it as a fixed effect. We do not have enough evidence to reject the full model for the model including squirrel only. The p-value for the model with year only is greater than 0.05. Therefore, we can drop squirrel as this gives a favorable model over the full model. This coincides with our inference above.  
+
+If the difference in deviances is big, we have a quadratic time trend. We trial a mixed model with year as a quadratic linear predictor :
+
+```{r}
+model2 <- glmer(ABUNDANCE ~ poly(YEAR,2) + (poly(YEAR,2) || PLOT), 
+              family = poisson, 
+              data = fox_abundance)
+
+summary(model2)  
+```
+
+The quadratic term is significant as it has a small p-value listed under the fixed effects heading. 
+
+We fit mixed models to describe the abundance and estimate the trend over sites. 
+Therefore, we overlay the fitted lines of this preferred model with confidence interval bands to Figure 2. We need to extract predicted values from the model and plot them. The scales are so conflicting that we allow each panel to have its own y-axis.
+
+```{r}
+foxprediction <- expand.grid(YEAR = seq(2006, 2012, length = 100), 
+                             PLOT = unique(fox_abundance$PLOT))
+
+foxprediction$pred <- predict(model2, 
+                              newdata = foxprediction,
+                              type = "response")
+
+ggplot(data = fox_abundance, aes(x = YEAR, y = ABUNDANCE)) + 
+  geom_point() +
+  geom_line() +
+  geom_line(data = foxprediction, aes(y = pred), size = 1, color = "blue") +
+  labs(x = "Time", y = "Abundance") +
+  facet_wrap(~PLOT, scales = "free_y") 
+```
+
+*Figure 6 : Yearly abundance of red foxes in Japan from 2005 to 2012 with superimposed regression lines from a mixed effects model containing year as a quadratic linear predictor *
+
+We see that S038, S052, S110 and S140 all contain one data point. It is not good to extrapolate with such little information as it is difficult to rely on a single observation to make important conclusions. Also, the two points in S153 does not yield much information so all of these blue curves follow a similar shape.
+
+## Joint modelling of mean and variance 
+
+Now, we turn to modelling the squirrel abundance. We fit Poisson and Negative Binomial models using the GAMLSS package : generalised additive models for location, scale and shape. Here, the response variable can follow any distribution. The 're' argument acts as a smoothing parameter and a penalised estimation method. 
+
+```{r}
+library(gamlss)
+
+pois_g <- gamlss(`Sciurus lis` ~ YEAR + `Vulpes vulpes` + re(random = ~YEAR | PLOT),
+                family = PO, 
+                data = na.omit(abun2_wide))
+
+summary(pois_g)
+```
+
+This model is similar to model1 above, fitted with the glmer function which uses Laplace Approximation of the integral in the Likelihood function. However, gamlss uses a backfitting algorithm so the estimates are slightly different.
+
+```{r}
+exp(2.506e-02)
+```
+
+For every extra fox, we expect a mean increase of 2.5% in the abundance of squirrels. This contradicts intuition knowing the predator-prey relationship between these animals. 
+
+We can examine the random effects :
+
+```{r}
+getSmo(pois_g)
+```
+
+```{r}
+wp(pois_g) 
+```
+
+*Figure 7 : Worm plot of the Poisson model of Japanese squirrel abundance data explained by year and fox abundance fitted using the gamlss package*
+
+The worm plot assesses goodness-of-fit. If the model is good, the randomised quantile residuals should be uniformly distributed. The Poisson model is inadequate as we have overdispersed data.
+
+The following Negative Binomial model has a quadratic variance function and accommodates overdispersion. 
+
+```{r}
+negbin_g <- gamlss(`Sciurus lis` ~ YEAR + `Vulpes vulpes` + re(random = ~YEAR | PLOT),
+                 family = NBI, 
+                 data = na.omit(abun2_wide))
+
+summary(negbin_g)
+```
+
+We exponentiate $\sigma$ to get the dispersion parameter.
+
+```{r}
+exp(-1.1108)
+```
+
+
+```{r}
+wp(negbin_g)
+```
+
+*Figure 8 : Negative Binomial GAMLSS model worm plot in which we modelled squirrel abundance based on fox abundance and time from the Japanese village data*
+
+The worm plot highlights that this model fits really well. The summary showed a smaller AIC than the Poisson model.
+
+We also fit a joint mean and dispersion model :
+
+```{r}
+negbin_g2 <- gamlss(`Sciurus lis` ~ YEAR + `Vulpes vulpes` + re(random = ~YEAR | PLOT),
+                    sigma.formula = ~YEAR,
+                    family = NBI, 
+                    data = na.omit(abun2_wide))
+
+summary(negbin_g2)
+```
+
+This model includes the effect of the covariate YEAR in the variance. We already know that the variance is not constant because it depends on the mean. The dispersion decreases as time goes forward. Adding an extra parameter means that there is a bigger log likelihood, which is better, but with the caveat of a larger number of parameters penalty.
+
+```{r}
+wp(negbin_g2)
+```
+
+*Figure 9 : Worm plot for joint mean-dispersion modelling for squirrel abundance with the predictors year and fox counts in Japan from the village dataset*
+
+The worm plot gives us a measure of fit for this model, which seems reasonably satisfactory. 
+
+```{r}
+AIC(pois_g)
+AIC(negbin_g)
+AIC(negbin_g2)
+```
+
+Subsequent to examining these Akaike Information Criterion values, we can conclude that the Negative Binomial type I model fits best and is not overly complex as it has the lowest AIC value. The extra overdispersion parameter was not worth including so we keep the simpler penultimate model.
+
+## Conclusions
+
+We can conclude from the models fitted that there is no correlation between the squirrel and the fox but yearly figures from some areas changed. So what factors affect their population? In a survey to estimate fox densities in rural British areas, landscape and slaughter were probable influential aspects (Heydon et al., 2006).
+
+Our various slope estimates from well fitting models are the rate of change of abundance, which can be used to declare a species as extinct if necessary (Porszt et al., 2012). Then the fate of these animals, along with many others, is in our hands.
+
+## References
+
+Bolker, B.M., Brooks, M.E., Clark, C.J., Geang, S.W., Poulsen, J.R., Stevens M.H.H., White, J.S. (2009) Generalized linear mixed models: a practical guide for ecology and evolution. Volume 24, Issue 3, P127-135.  
+
+Bono, R., Alarcon, R., Blanca, M.J. (2021)
+Report Quality of Generalized Linear Mixed Models in Psychology: A Systematic Review
+Volume 12 https://doi.org/10.3389/fpsyg.2021.666182  
+
+Demétrio, C.G.B., Hinde, J., and Moral, R.A. (2014) Models for Overdispersed Data in Entomology. Part of the Entomology in Focus book series (ENFO, volume 1)  
+
+Heydon, M.J., Reynolds, J.C., Short, M.J. (2006)
+Variation in abundance of foxes (Vulpes vulpes) between three regions of rural Britain, in relation to landscape and other variables https://doi.org/10.1111/j.1469-7998.2000.tb00608.x  
+
+Monitoring Site 1000 Project, Biodiversity Center, Ministry of Environment of Japan (2014) “Monitoring site 1000 Village survey - Medium and large mammal survey data (2006-2012)” (SAT03zip, downloaded from http://www.biodic.go.jp/moni1000/findings/data/index.html). Accessed 2016.  
+
+Moral, R.D.A., Hinde, J., Demétrio, C.G.B.  (2017) Half-Normal Plots and Overdispersed Models in R: The hnp Package. Journal of Statistical Software, 81 (10). ISSN 1548-7660    
+
+Porszt, E.J., Peterman, R.M., Dulvy, N.K., Cooper, A.B., Irvine, J.R. 2012 Reliability of Indicators of Decline in Abundance  
+
+Royle, J.A., Dorazio, R.M. Hierarchical models of animal abundance and occurrence. JABES 11, 249–263 (2006). https://doi.org/10.1198/108571106X129153  
