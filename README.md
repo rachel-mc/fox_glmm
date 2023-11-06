@@ -33,6 +33,8 @@ Verdade, L.M., Lyra-Jorge, M.C., Piña, C.I. (2014b) Redirections in conservatio
 
 Yoccoz, N.G., Nichols, J.D., Boulinier, T. (2001) Monitoring of biological diversity in space and time. Trends in Ecology and Evolution, 16(8), 446-453.
 
+I acquired expertise in the theory and implementation of generalized linear mixed models, as well as applied knowledge in ecology and wildlife management.
+
 My role involved:
 1.	Independent study of GLMM theory and implementation using R;
 2.	Practical work with a dataset on the abundance of different species of medium and large mammals observed using camera traps in Japan;
@@ -40,5 +42,3 @@ My role involved:
 4.	Fitting and interpreting GLMMs to the data;
 5.	Performing model selection and assessing goodness-of-fit;
 6.	Producing a report on the analysis using R Markdown.
-
-I acquired expertise in the theory and implementation of generalized linear mixed models, as well as applied knowledge in ecology and wildlife management.
